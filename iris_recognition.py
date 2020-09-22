@@ -1,16 +1,3 @@
-############################################
-#             IRIS RECOGNITION             #
-############################################
-# canny edge detection                     #
-# circular hough transform                 #
-# Tresholding                              #
-# Polar transformation                     #
-# Image Normalization                      #
-# Equalizzazione dell'istogramma           #
-# Haar Wavelet Estraction                  #
-# Hamming Distance                         #
-############################################
-
 import os
 import cv2
 import itertools
@@ -18,174 +5,110 @@ import math
 from typing import Tuple
 import numpy as np
 from scipy.interpolate import interp1d
+import scipy.io as sio
 import matplotlib.pyplot as plt
-
-
-
-# Utils Function
-#######################################################################################################################################################################
-
-def min(array):
-    min = 100000
-    min_index = 0
-
-    k = 0
-    for element in array:
-        if abs(np.sum(element)) < min:
-            min = abs(np.sum(element))
-            min_index = k
-        k = k + 1
-    return min, min_index
-
-def from_radiant_to_degree(radiant):
-    return radiant * 180 / math.pi
-
-def isclose(a, b, rtol=1e-5, atol=1e-8):
-    return np.abs(a-b) <= (atol + rtol * np.abs(b))
-
-def whereclose(a, b, rtol=1e-5, atol=1e-8):
-    return np.where(isclose(a, b, rtol, atol))#[0][0]
-
-def fillhole(input_image):
-    '''
-    input gray binary image  get the filled image by floodfill method
-    Note: only holes surrounded in the connected regions will be filled.
-    :param input_image:
-    :return:
-    '''
-    im_flood_fill = input_image.copy()
-    h, w = input_image.shape[:2]
-    mask = np.zeros((h + 2, w + 2), np.uint8)
-    im_flood_fill = im_flood_fill.astype("uint8")
-    cv2.floodFill(im_flood_fill, mask, (0, 0), 255)
-    im_flood_fill_inv = cv2.bitwise_not(im_flood_fill)
-    img_out = input_image | im_flood_fill_inv
-    return img_out 
-
-def imshow_components(labels):
-    # Map component labels to hue val
-    label_hue = np.uint8(179*labels/np.max(labels))
-    blank_ch = 255*np.ones_like(label_hue)
-    labeled_img = cv2.merge([label_hue, blank_ch, blank_ch])
-
-    # cvt to BGR for display
-    labeled_img = cv2.cvtColor(labeled_img, cv2.COLOR_HSV2BGR)
-
-    # set bg label to black
-    labeled_img[label_hue==0] = 0
-
-    cv2.imshow('labeled.png', labeled_img)
-    cv2.waitKey()
-
-def find_centroid(blob):
-    # calculate moments of binary image
-    M = cv2.moments(blob)
-    cX = int(M["m10"] / M["m00"])
-    cY = int(M["m01"] / M["m00"])
-    return cX, cY
-
-def daugman(img, start_r, center):
-
-    # get separate coordinates
-    x, y = center
-    
-    # get img dimensions
-    h, w = img.shape
-
-    # define some other vars
-    tmp = []
-    mask = np.zeros_like(img)
-
-    # k è un parametro per determinare il limite superiore dei raggi
-    k = h
-    if w < h:
-        k = w
-
-    # for every radius in range
-    # we are presuming that iris will be no bigger than 1/3 of picture
-    for r in range(start_r, int(k / 3)):
-        
-        # draw circle on mask (solo la circonferenza non cerchio pieno!)
-        cv2.circle(mask, center, r, 255, 1)
-
-        # get pixel from original image
-        radii = img & mask  # it is faster than np or cv2
-
-        # normalize np.add.reduce faster than .sum()
-        tmp.append(np.add.reduce(radii[radii > 0]) / (2 * math.pi * r))
-        
-        # refresh mask
-        mask.fill(0)
-
-    # calculate delta of radius intensitiveness
-    # mypy does not tolerate var type reload
-    tmp_np = np.array(tmp, dtype=np.float32)
-    del tmp
-
-    if tmp_np != []:
-        tmp_np = tmp_np[1:] - tmp_np[:-1]  # x5 faster than np.diff()
-
-        # aply gaussian filter
-        tmp_np = abs(cv2.GaussianBlur(tmp_np[:-1], (1, 5), 0))
-
-        # get index of the maximum value
-        idx = np.argmax(tmp_np)
-
-        # get maximum value
-        val = tmp_np[idx]
-
-        circle = (center, idx + start_r)
-    else:
-        val = 0
-        circle = ((0, 0), 0)
-
-    # return value, center coords, radius
-    return val, circle
-
-def find_iris(img, start_r):
-    values = []
-    coords = []
-
-    h, w = img.shape
-
-    for i in range(0 + int(h / 3), h - int(h / 3), 3):
-        for j in range(0 + int(w / 3), w - int(w / 3), 3):
-            tmp = daugman(img, start_r, (j, i))
-            if tmp is not None:
-                val, circle = tmp
-                values.append(val)
-                coords.append(circle)
-    
-    # return the radius with biggest intensiveness delta on image
-    # ((xc, yc), radius)
-    return coords[values.index(max(values))]
-
-#######################################################################################################################################################################
-
 
 
 # Sub-Functions
 #######################################################################################################################################################################
 
+# implementazione algoritmo di daugman per la detection dell'iride
+def daugman(img, start_r, center):
+
+	# get separate coordinates
+	x, y = center
+	
+	# get img dimensions
+	h, w = img.shape
+
+	# define some other vars
+	tmp = []
+	mask = np.zeros_like(img)
+
+	# k è un parametro per determinare il limite superiore dei raggi
+	k = h
+	if w < h:
+		k = w
+
+	# for every radius in range
+	# we are presuming that iris will be no bigger than 1/3 of picture
+	for r in range(start_r, int(k / 3)):
+		
+		# draw circle on mask (solo la circonferenza non cerchio pieno!)
+		cv2.circle(mask, center, r, 255, 1)
+
+		# get pixel from original image
+		radii = img & mask  # it is faster than np or cv2
+
+		# normalize np.add.reduce faster than .sum()
+		tmp.append(np.add.reduce(radii[radii > 0]) / (2 * math.pi * r))
+		
+		# refresh mask
+		mask.fill(0)
+
+	# calculate delta of radius intensitiveness
+	# mypy does not tolerate var type reload
+	tmp_np = np.array(tmp, dtype=np.float32)
+	del tmp
+
+	if tmp_np != []:
+		tmp_np = tmp_np[1:] - tmp_np[:-1]  # x5 faster than np.diff()
+
+		# aply gaussian filter
+		tmp_np = abs(cv2.GaussianBlur(tmp_np[:-1], (1, 5), 0))
+
+		# get index of the maximum value
+		idx = np.argmax(tmp_np)
+
+		# get maximum value
+		val = tmp_np[idx]
+
+		circle = (center, idx + start_r)
+	else:
+		val = 0
+		circle = ((0, 0), 0)
+
+	# return value, center coords, radius
+	return val, circle
+
+def find_iris(img, start_r):
+	values = []
+	coords = []
+
+	h, w = img.shape
+
+	for i in range(0 + int(h / 3), h - int(h / 3), 3):
+		for j in range(0 + int(w / 3), w - int(w / 3), 3):
+			tmp = daugman(img, start_r, (j, i))
+			if tmp is not None:
+				val, circle = tmp
+				values.append(val)
+				coords.append(circle)
+	
+	# return the radius with biggest intensiveness delta on image
+	# ((xc, yc), radius)
+	return coords[values.index(max(values))]
+
+
 # trovo la pupilla tramite l'algoritmo di daugman
 def pupil_detection(img):
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    res = find_iris(gray, 10)
-    return  res[0][0], res[0][1], res[1]
+	gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+	res = find_iris(gray, 10)
+	return  res[0][0], res[0][1], res[1]
 
 # trovo la sclera tramite l'algoritmo di daugman
 def iris_contour_detection(img, pupil_radius, alpha):
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    res = find_iris(gray, pupil_radius*alpha)
-    return  res[0][0], res[0][1], res[1]
+	gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+	res = find_iris(gray, pupil_radius*alpha)
+	return  res[0][0], res[0][1], res[1]
+
 
 # creo la maschera per segmentare l'iride
 def create_circular_mask(shape, circle):
-    (x, y, r) = circle
-    mask = np.zeros(shape, dtype=np.uint8)
-    cv2.circle(mask, (x, y), r, (255, 255, 255), -1, 8, 0)
-    return mask
-
+	(x, y, r) = circle
+	mask = np.zeros(shape, dtype=np.uint8)
+	cv2.circle(mask, (x, y), r, (255, 255, 255), -1, 8, 0)
+	return mask
 
 
 # normalizzo l'iride segmentata in coordinate polari tramite il dougman rubber sheet model
@@ -342,7 +265,6 @@ def circlecoords(c, r, imgsize, nsides=600):
 	return x,y
 
 
-
 # estrazione features tramite gabor wavelets
 def gaborconvolve(im, minWaveLength, mult, sigmaOnf):
 	"""
@@ -442,105 +364,207 @@ def encode(polar_array, noise_array, minWaveLength, mult, sigmaOnf):
 
 def iris_encoding(img):
 
-    # reduce/remove noise applicando filtro gaussiano
-    blur = cv2.GaussianBlur(img, (3, 3), cv2.BORDER_DEFAULT)
+	# reduce/remove noise applicando filtro gaussiano
+	blur = cv2.GaussianBlur(img, (3, 3), cv2.BORDER_DEFAULT)
 
-    # contrast enhancement
-    normalized = cv2.normalize(blur, None, alpha=0, beta=1, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_32F) # from 0-255 -> 0-1
-    gamma = 1.2
-    contrasted = np.power(normalized, 1/gamma)
-    contrasted = cv2.normalize(contrasted, None, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8UC1) # from 0-1 -> 0-255
+	# contrast enhancement
+	normalized = cv2.normalize(blur, None, alpha=0, beta=1, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_32F) # from 0-255 -> 0-1
+	gamma = 1.2
+	contrasted = np.power(normalized, 1/gamma)
+	contrasted = cv2.normalize(contrasted, None, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8UC1) # from 0-1 -> 0-255
 
-    output = img.copy()
+	output = img.copy()
 
-    # detection
-    (x1, y1, r1) = pupil_detection(contrasted)
-    (x2, y2, r2) = iris_contour_detection(contrasted, r1, 2)
+	# detection
+	(x1, y1, r1) = pupil_detection(contrasted)
+	(x2, y2, r2) = iris_contour_detection(contrasted, r1, 2)
 
-    cv2.circle(output, (x1, y1), r1, (0, 255), 2)
-    cv2.circle(output, (x2, y2), r2, (0, 255), 2)
+	#cv2.circle(output, (x1, y1), r1, (0, 255), 2)
+	#cv2.circle(output, (x2, y2), r2, (0, 255), 2)
 
-    #print('centro pupilla -> x: {}, y: {}'.format(x1, y1))
-    #print('centro iride -> x: {}, y: {}'.format(x2, y2))
+	#print('centro pupilla -> x: {}, y: {}'.format(x1, y1))
+	#print('centro iride -> x: {}, y: {}'.format(x2, y2))
 
-    plt.imshow(output)
-    plt.title('iris detection')
-    plt.show()
+	#plt.imshow(output)
+	#plt.title('iris detection')
+	#plt.show()
 
-    # masking
-    pupil_mask = create_circular_mask(img.shape[:2], (x1, y1, r1))
-    external_iris_mask = create_circular_mask(img.shape[:2], (x2, y2, r2))
-    mask = np.subtract(external_iris_mask, pupil_mask)
+	# masking
+	pupil_mask = create_circular_mask(img.shape[:2], (x1, y1, r1))
+	external_iris_mask = create_circular_mask(img.shape[:2], (x2, y2, r2))
+	mask = np.subtract(external_iris_mask, pupil_mask)
 
-    #plt.imshow(mask, cmap='gray')
-    #plt.title('mask')
-    #plt.show()
-
-
-    # isolated iris
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
-    isolated_iris = gray & mask
-
-    #plt.imshow(isolated_iris, cmap='gray')
-    #plt.title('isolated_iris')
-    #plt.show()
+	#plt.imshow(mask, cmap='gray')
+	#plt.title('mask')
+	#plt.show()
 
 
-    # iris normalization
-    polar_array, noise_array = iris_normalization(isolated_iris, x2, y2, r2, x1, y1, r1, 20, 240)
+	# isolated iris
+	gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-    plt.imshow(polar_array, cmap='gray')
-    plt.title('polar_array')
-    plt.show()
+	isolated_iris = gray & mask
+
+	#plt.imshow(isolated_iris, cmap='gray')
+	#plt.title('isolated_iris')
+	#plt.show()
 
 
-    # feature extraction (2D gabor wavelet)
-    # generate code (phase quantization)
-    minWaveLength = 18
-    mult = 1
-    sigmaOnf = 0.5
-    template, mask = encode(polar_array, noise_array, minWaveLength, mult, sigmaOnf)
+	# iris normalization
+	polar_array, noise_array = iris_normalization(isolated_iris, x2, y2, r2, x1, y1, r1, 20, 240)
 
-    plt.imshow(template, cmap='gray')
-    plt.title('template')
-    plt.show()
+	#plt.imshow(polar_array, cmap='gray')
+	#plt.title('polar_array')
+	#plt.show()
 
-    return template, mask
+
+	# feature extraction (2D gabor wavelet)
+	# generate code (phase quantization)
+	minWaveLength = 18
+	mult = 1
+	sigmaOnf = 0.5
+	template, mask = encode(polar_array, noise_array, minWaveLength, mult, sigmaOnf)
+
+	#plt.imshow(template, cmap='gray')
+	#plt.title('template')
+	#plt.show()
+
+	return template, mask
 
 def dataset_encoding(data_path):
-    for filename in os.listdir(data_path):
-        image = cv2.imread(data_path + filename)
-        template, mask = iris_encoding(image)
-        cv2.imwrite("./output/"+filename, output)
+	subjects = [filename for filename in os.listdir(data_path) if filename != "ReadMe.txt"]
+	subjects.sort()
+	for subject in subjects:
+		leftpath = data_path + '/' + subject + '/left'
+		left = [filename for filename in os.listdir(leftpath) if filename.split('.')[1] == 'bmp']
 
-def matching(img1, img2):
-    res = False
-    
-    similiarity = np.equal(img1, img2).sum()/img1.size
+		for x in left:
+			image = cv2.imread(leftpath + '/' + x)
+			template, mask = iris_encoding(image)
+			filepath = leftpath + '/' + x.split('.')[0] + '.mat'
+			sio.savemat(filepath, mdict={'template': template, 'mask': mask, 'name': x.split('.')[0]})
 
-    T = 0.9
-    if similiarity > T:
-        res = True
-    
-    return res
+		rightpath = data_path + '/' + subject + '/right'
+		right = [filename for filename in os.listdir(rightpath) if filename.split('.')[1] == 'bmp']
+		for x in right:
+			image = cv2.imread(rightpath + '/' + x)
+			template, mask = iris_encoding(image)
+			filepath = rightpath + '/' + x.split('.')[0] + '.mat'
+			sio.savemat(filepath, mdict={'template': template, 'mask': mask, 'name': x.split('.')[0]})
 
-def recognition(img_test, subject, data_path):
-    result = False
-    
-    filenames = [filename for filename in os.listdir(data_path)]
-    images = [cv2.imread('./output/' + filename) for filename in filenames]
+		print("subject: {} encoded!".format(subject))
 
-    i = 0
-    while result == False and i < len(images):
-        image = cv2.cvtColor(images[i], cv2.COLOR_BGR2GRAY)
-        result = matching(img_test, image)
+def hammingdist(template1, mask1, template2, mask2):
+	"""
+	Description:
+		Calculate the Hamming distance between two iris templates.
+	Input:
+		template1	- The first template.
+		mask1		- The first noise mask.
+		template2	- The second template.
+		mask2		- The second noise mask.
+	Output:
+		hd			- The Hamming distance as a ratio.
+	"""
+	# Initialize
+	hd = np.nan
 
-        print('soggetto: {}, result: {}'.format(filenames[i], result))
+	# Shift template left and right, use the lowest Hamming distance
+	for shifts in range(-8,9):
+		template1s = shiftbits(template1, shifts)
+		mask1s = shiftbits(mask1, shifts)
 
-        i = i + 1
-    
-    return result
+		mask = np.logical_or(mask1s, mask2)
+		nummaskbits = np.sum(mask==1)
+		totalbits = template1s.size - nummaskbits
+
+		C = np.logical_xor(template1s, template2)
+		C = np.logical_and(C, np.logical_not(mask))
+		bitsdiff = np.sum(C==1)
+
+		if totalbits==0:
+			hd = np.nan
+		else:
+			hd1 = bitsdiff / totalbits
+			if hd1 < hd or np.isnan(hd):
+				hd = hd1
+
+	# Return
+	return hd
+
+def shiftbits(template, noshifts):
+	"""
+	Description:
+		Shift the bit-wise iris patterns.
+	Input:
+		template	- The template to be shifted.
+		noshifts	- The number of shift operators, positive for right
+					  direction and negative for left direction.
+	Output:
+		templatenew	- The shifted template.
+	"""
+	# Initialize
+	templatenew = np.zeros(template.shape)
+	width = template.shape[1]
+	s = 2 * np.abs(noshifts)
+	p = width - s
+
+	# Shift
+	if noshifts == 0:
+		templatenew = template
+
+	elif noshifts < 0:
+		x = np.arange(p)
+		templatenew[:, x] = template[:, s + x]
+		x = np.arange(p, width)
+		templatenew[:, x] = template[:, x - p]
+
+	else:
+		x = np.arange(s, width)
+		templatenew[:, x] = template[:, x - s]
+		x = np.arange(s)
+		templatenew[:, x] = template[:, p + x]
+
+	# Return
+	return templatenew
+
+def recognition(template1, mask1, data_path):
+	result = False
+	values = []
+	
+	threshold = 0.38
+
+	subjects = [filename for filename in os.listdir(data_path) if filename != "ReadMe.txt"]
+	subjects.sort()
+	
+	for subject in subjects:
+
+		leftpath = data_path + '/' + subject + '/left'
+		left = [filename for filename in os.listdir(leftpath) if filename.split('.')[1] == 'bmp']
+		for x in left:
+			matfile = sio.loadmat(leftpath + '/' + x.split('.')[0] + '.mat')
+			template2 = matfile['template']
+			mask2 = matfile['mask']
+			result = hammingdist(template1, mask1, template2, mask2)
+
+			values.append(result)
+			
+			if result <= threshold:
+				print('soggetto: {}, result: {}'.format(leftpath + '/' + x.split('.')[0], result))
+
+		rightpath = data_path + '/' + subject + '/right'
+		right = [filename for filename in os.listdir(rightpath) if filename.split('.')[1] == 'bmp']
+		for x in right:
+			matfile = sio.loadmat(rightpath + '/' + x.split('.')[0] + '.mat')
+			template2 = matfile['template']
+			mask2 = matfile['mask']
+			result = hammingdist(template1, mask1, template2, mask2)
+
+			values.append(result)
+			
+			if result <= threshold:
+				print('soggetto: {}, result: {}'.format(rightpath + '/' + x.split('.')[0], result))
+
+	return min(values)[0] <= threshold
 
 #######################################################################################################################################################################
 
@@ -556,28 +580,29 @@ data_path = './data'
 
 
 choice = 0
-filename = '/1/left/aeval1.bmp'
+filename = '/31/left/roslil1.bmp'
 
 print('test soggetto: {}'.format(filename))
 
 img = cv2.imread(data_path + filename)
-template, mask = iris_encoding(img)
+template1, mask1 = iris_encoding(img)
 
-'''
+
 if choice == 0:
-    # test su tutto il db
-    result = recognition(output, filename, data_path)
+	# test su tutto il db
+	result = recognition(template1, mask1, data_path)
 else:
-    # test singolo
-    filename2 = '001L_1.png'
+	# test singolo
+	filename2 = '/2/left/bryanl1.mat'
 
-    print('confronto con il soggetto: {}'.format(filename2))
+	print('confronto con il soggetto: {}'.format(filename2))
 
-    test = cv2.imread('./output/' + filename2)
-    test = cv2.cvtColor(test, cv2.COLOR_BGR2GRAY)
-    result = matching(output, test)
+	matfile = sio.loadmat(data_path + '/' + filename2)
+	template2 = matfile['template']
+	mask2 = matfile['mask']
+	result = hammingdist(template1, mask1, template2, mask2)
 
 print("recognition result: {}".format(result))
-'''
+
 
 #######################################################################################################################################################################
