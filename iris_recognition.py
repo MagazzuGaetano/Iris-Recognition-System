@@ -1,10 +1,7 @@
 import os
 import cv2
-import itertools
 import math
-from typing import Tuple
 import numpy as np
-from scipy.interpolate import interp1d
 import scipy.io as sio
 import matplotlib.pyplot as plt
 
@@ -12,7 +9,7 @@ import matplotlib.pyplot as plt
 # Sub-Functions
 #######################################################################################################################################################################
 
-# implementazione algoritmo di daugman per la detection dell'iride
+# implementation of daugman's algorithm for iris detection
 def daugman(img, start_r, center):
 
 	# get separate coordinates
@@ -25,7 +22,6 @@ def daugman(img, start_r, center):
 	tmp = []
 	mask = np.zeros_like(img)
 
-	# k è un parametro per determinare il limite superiore dei raggi
 	k = h
 	if w < h:
 		k = w
@@ -34,7 +30,7 @@ def daugman(img, start_r, center):
 	# we are presuming that iris will be no bigger than 1/3 of picture
 	for r in range(start_r, int(k / 3)):
 		
-		# draw circle on mask (solo la circonferenza non cerchio pieno!)
+		# draw circle on mask
 		cv2.circle(mask, center, r, 255, 1)
 
 		# get pixel from original image
@@ -90,20 +86,20 @@ def find_iris(img, start_r):
 	return coords[values.index(max(values))]
 
 
-# trovo la pupilla tramite l'algoritmo di daugman
+# detection of the pupil using the Daugman algorithm
 def pupil_detection(img):
 	gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 	res = find_iris(gray, 10)
 	return  res[0][0], res[0][1], res[1]
 
-# trovo la sclera tramite l'algoritmo di daugman
+# detection of the sclera using the Daugman algorithm
 def iris_contour_detection(img, pupil_radius, alpha):
 	gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 	res = find_iris(gray, pupil_radius*alpha)
 	return  res[0][0], res[0][1], res[1]
 
 
-# creo la maschera per segmentare l'iride
+# mask creation to segment the iris
 def create_circular_mask(shape, circle):
 	(x, y, r) = circle
 	mask = np.zeros(shape, dtype=np.uint8)
@@ -111,7 +107,6 @@ def create_circular_mask(shape, circle):
 	return mask
 
 
-# normalizzo l'iride segmentata in coordinate polari tramite il dougman rubber sheet model
 def iris_normalization(image, x_iris, y_iris, r_iris, x_pupil, y_pupil, r_pupil, radpixels, angulardiv):
 	"""
 	Description:
@@ -265,7 +260,6 @@ def circlecoords(c, r, imgsize, nsides=600):
 	return x,y
 
 
-# estrazione features tramite gabor wavelets
 def gaborconvolve(im, minWaveLength, mult, sigmaOnf):
 	"""
 	Description:
@@ -308,7 +302,6 @@ def gaborconvolve(im, minWaveLength, mult, sigmaOnf):
 	# Return
 	return filterbank
 
-# generazione codice tramite quantizzazione della fase
 def encode(polar_array, noise_array, minWaveLength, mult, sigmaOnf):
 	"""
 	Description:
@@ -364,7 +357,7 @@ def encode(polar_array, noise_array, minWaveLength, mult, sigmaOnf):
 
 def iris_encoding(img):
 
-	# reduce/remove noise applicando filtro gaussiano
+	# reduce / remove noise by applying a Gaussian filter
 	blur = cv2.GaussianBlur(img, (3, 3), cv2.BORDER_DEFAULT)
 
 	# contrast enhancement
@@ -379,15 +372,13 @@ def iris_encoding(img):
 	(x1, y1, r1) = pupil_detection(contrasted)
 	(x2, y2, r2) = iris_contour_detection(contrasted, r1, 2)
 
-	#cv2.circle(output, (x1, y1), r1, (0, 255), 2)
-	#cv2.circle(output, (x2, y2), r2, (0, 255), 2)
-
-	#print('centro pupilla -> x: {}, y: {}'.format(x1, y1))
-	#print('centro iride -> x: {}, y: {}'.format(x2, y2))
+	cv2.circle(output, (x1, y1), r1, (0, 255), 2)
+	cv2.circle(output, (x2, y2), r2, (0, 255), 2)
 
 	#plt.imshow(output)
 	#plt.title('iris detection')
 	#plt.show()
+
 
 	# masking
 	pupil_mask = create_circular_mask(img.shape[:2], (x1, y1, r1))
@@ -549,7 +540,7 @@ def recognition(template1, mask1, data_path):
 			values.append(result)
 			
 			if result <= threshold:
-				print('soggetto: {}, result: {}'.format(leftpath + '/' + x.split('.')[0], result))
+				print('subject: {}, result: {}'.format(leftpath + '/' + x.split('.')[0], result))
 
 		rightpath = data_path + '/' + subject + '/right'
 		right = [filename for filename in os.listdir(rightpath) if filename.split('.')[1] == 'bmp']
@@ -562,9 +553,9 @@ def recognition(template1, mask1, data_path):
 			values.append(result)
 			
 			if result <= threshold:
-				print('soggetto: {}, result: {}'.format(rightpath + '/' + x.split('.')[0], result))
+				print('subject: {}, result: {}'.format(rightpath + '/' + x.split('.')[0], result))
 
-	return min(values)[0] <= threshold
+	return min(values) <= threshold
 
 #######################################################################################################################################################################
 
@@ -576,26 +567,26 @@ def recognition(template1, mask1, data_path):
 os.environ['DISPLAY'] = ':0'
 data_path = './data'
 
-#dataset_encoding(data_path) # creazione db
-
+# encoding of the entire dataset
+# dataset_encoding(data_path)
 
 choice = 0
-filename = '/31/left/roslil1.bmp'
+filename = '/2/left/bryanl1.bmp'
 
-print('test soggetto: {}'.format(filename))
+print('test subject: {}'.format(filename))
 
 img = cv2.imread(data_path + filename)
 template1, mask1 = iris_encoding(img)
 
 
 if choice == 0:
-	# test su tutto il db
+	# test on the whole dataset
 	result = recognition(template1, mask1, data_path)
 else:
-	# test singolo
+	# single test
 	filename2 = '/2/left/bryanl1.mat'
 
-	print('confronto con il soggetto: {}'.format(filename2))
+	print('compare with the subject: {}'.format(filename2))
 
 	matfile = sio.loadmat(data_path + '/' + filename2)
 	template2 = matfile['template']
