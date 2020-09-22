@@ -11,6 +11,7 @@ A simple iris recognition system
 # normalizzazione dell'iride
 ![iris_normalization](https://user-images.githubusercontent.com/30373288/93876884-d6322480-fcd7-11ea-94fb-e69e787e97d9.jpg)
 ![rubber_sheet_model](https://user-images.githubusercontent.com/30373288/93877672-0fb75f80-fcd9-11ea-806a-e1b1fffe2266.jpg)
+
 Citation: Journal of Intelligent Systems 24, 2; 10.1515/jisys-2014-0109
 
 # encoding
