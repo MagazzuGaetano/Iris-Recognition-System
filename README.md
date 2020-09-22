@@ -1,6 +1,7 @@
 # Iris-Recognition-System
-A simple iris recognition system, developed in opencv with python, using the database of the Multimedia University (MMU1) iris dataset
+A simple iris recognition system, developed in opencv with python, using the MMU1 iris dataset.
 
+# Dataset
 Multimedia University (MMU1) database is a public database consisting of Eye Images for training models of IRIS based Biometric attendance system. IRIS patterns for each Eye are unique for every individual and this is helpful in identifying an individual. This Dataset consist of both 5 images each of left and right IRIS of 46 persons, totalling 460 images along with few empty files. IRIS segmentation can be performed for Individual identification/classifying an IRIS image according to saved data base.
 
 # iris detection
