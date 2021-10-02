@@ -24,6 +24,6 @@ Citation: Journal of Intelligent Systems 24, 2; 10.1515/jisys-2014-0109
 ![hammingdist](https://user-images.githubusercontent.com/30373288/93877388-acc5c880-fcd8-11ea-8e02-0b510fa0c366.jpg)
 
 #
-Some parts of the code are taken from:
+this project is based on:
 - https://github.com/banderlog/daugman
 - https://github.com/thuyngch/Iris-Recognition
